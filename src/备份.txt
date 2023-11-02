@@ -1,0 +1,92 @@
+-Dapollo.configService=http://arch-test-apollo.hljnbw.cn:10003
+-Denv=DEV
+-Dtest.feign.url=dev-api.hunliji.com
+-DDlocal.feign.plan.url=dev-api.hunliji.com
+-Dlocal.feign.business.url=127.0.0.1:20800
+-DDlocal.feign.account.url=dev-api.hunliji.com
+-Dlocal.feign.engine.url=dev-api.hunliji.com
+-Dlocal.feign.plan.url=127.0.0.1:20800
+-DDlocal.feign.business.url=127.0.0.1:20800
+-Dlocal.feign.account.url=127.0.0.1:22800
+-DDlocal.feign.engine.url=127.0.0.1:21000
+-Dlogging.level.com.hunliji.business.dao.mapper.business=debug
+
+
+
+
+.hystrix.enabled: false 
+
+
+ @Override
+    public Long insertBillDetail(BillDetailParam billDetailParam) {
+        ResponseData<Long> longResponseData = null;
+        try {
+            checkBeforeInsert(billDetailParam);
+            billDetailParam.setPaySuccess(1);
+            billDetailParam.setCreatedAt(new Date());
+            billDetailParam.setUpdatedAt(new Date());
+            billDetailParam.setDeleted(false);
+            longResponseData = billSummaryRest.storeBillDetailInfo(billDetailParam);
+            if (longResponseData != null && CodeEnum.SUCCESS.getCode().equals(longResponseData.getStatus().getRetCode())) {
+                return longResponseData.getData();
+            }
+            return null;
+        } catch (Exception e) {
+            throw new WarnException("根据planId计费服务统计当日费用失败 " + e.getMessage());
+        }
+    }
+
+    /**
+     * 新增数据
+     *
+     * @param billDetailParamList 实例对象
+     * @return 批量插入数据结果
+     */
+    @Override
+    public boolean insertBillDetailBatch(List<BillDetailParam> billDetailParamList) {
+        if (billDetailParamList.isEmpty()) {
+            for(int i = 0; i < 100; i++) {
+                BillDetailParam billDetailParam = JSON.parseObject("{\"amount\":957,\"bid\":1983333,\"cityGroupId\":186,\"costSource\":1,\"cpmFlag\":\"1408e4f0191138423397575933735580-LS0tLS0tLS0tLS0tLS0tc3RvcmUtMC0xODcxMzAxNTItLTAuMDIxOTc3LTAuMDIxOTc3LS0xMDAwMTEwMTEtLTUtNy44MjQ0MTQtMzkwNzYyMjc2MjAxMjEtNy44MjQ0MTQtOTk2MDUtLS0tLS0xNjk1NzMyNTYwNTIw\",\"ctr\":0.02197726098,\"cvr\":0.02197726098,\"expoTime\":1695732562000,\"merchantId\":103222,\"planId\":1000073,\"planType\":1,\"position\":2,\"propertyId\":6,\"sourceId\":99605}", BillDetailParam.class);
+                billDetailParam.setPaySuccess(1);
+                billDetailParam.setCreatedAt(new Date());
+                billDetailParam.setUpdatedAt(new Date());
+                billDetailParam.setDeleted(false);
+                billDetailParamList.add(billDetailParam);
+            }
+            for (BillDetailParam billDetailParam : billDetailParamList) {
+                checkBeforeInsert(billDetailParam);
+            }
+        }
+        ResponseData<Boolean> insertResult = billSummaryRest.storeBillDetailList(billDetailParamList);
+        log.info("RPC-执行结果：{}",insertResult.getData());
+        return insertResult.getData();
+    }
+
+    /**
+     * 反射处理null字段避免大量属性判空
+     * @param param 传入一个HTTP调用时传递的序列化对象
+     */
+    private void checkBeforeInsert(BillDetailParam param) {
+        Class<?> cls = param.getClass();
+        Arrays.stream(cls.getDeclaredFields())
+                .filter(field -> field.isAnnotationPresent(DefaultValue.class))
+                .forEach(field -> {
+                    DefaultValue defaultValueAnnotation = field.getAnnotation(DefaultValue.class);
+                    // 获取字段的数据类型
+                    Class<?> fieldType = field.getType();
+                    String defaultValue = defaultValueAnnotation.defaultValue();
+                    try {
+                        field.setAccessible(true);
+                        if (Objects.isNull(field.get(param))) {
+                            // 根据数据类型进行定向赋值
+                            if (fieldType == Integer.class) {
+                                field.set(param,Integer.parseInt(defaultValue));
+                            } else if (fieldType == String.class){
+                                field.set(param, defaultValue);
+                            }
+                        }
+                    } catch (IllegalAccessException e) {
+                        log.error(e.getMessage());
+                    }
+                });
+    }
